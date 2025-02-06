@@ -1,0 +1,77 @@
+import yfinance as yf
+import openai
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+import json
+
+# Configure OpenAI API
+openai.api_key = "your-api-key-here"
+
+def fetch_market_data(tickers):
+    """Fetches market data for given tickers."""
+    data = {}
+    for ticker in tickers:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="1y")["Close"]
+        data[ticker] = hist
+    return pd.DataFrame(data)
+
+def risk_assessment(portfolio):
+    """Assesses user's risk tolerance using clustering."""
+    returns = portfolio.pct_change().dropna()
+    volatility = returns.std()
+    
+    scaler = StandardScaler()
+    vol_scaled = scaler.fit_transform(volatility.values.reshape(-1,1))
+    
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    risk_label = kmeans.fit_predict(vol_scaled)
+    
+    return {ticker: f"Risk Level {risk_label[i]}" for i, ticker in enumerate(portfolio.columns)}
+
+def investment_recommendation(risk_level):
+    """Generates investment recommendations based on risk tolerance."""
+    prompts = {
+        "low": "Suggest safe investments like bonds and blue-chip stocks.",
+        "medium": "Suggest a mix of stocks, ETFs, and some high-yield bonds.",
+        "high": "Suggest aggressive investments with high risk and high reward."
+    }
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "system", "content": prompts[risk_level]}]
+    )
+    return response["choices"][0]["message"]["content"]
+
+def track_expenses(expenses_json):
+    """Analyzes user expenses and suggests optimizations."""
+    expenses = json.loads(expenses_json)
+    df = pd.DataFrame(expenses)
+    
+    category_totals = df.groupby("category")["amount"].sum()
+    suggestions = f"You are spending the most on {category_totals.idxmax()} at ${category_totals.max():.2f} per month. Consider optimizing this expense."
+    
+    return suggestions
+
+def ai_chat(prompt):
+    """Allows users to ask financial questions via AI."""
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response["choices"][0]["message"]["content"]
+
+# Example usage
+if __name__ == "__main__":
+    portfolio = fetch_market_data(["AAPL", "TSLA", "GOOGL"])
+    risk_levels = risk_assessment(portfolio)
+    recommendations = investment_recommendation("medium")
+    expenses = '[{"category": "food", "amount": 300}, {"category": "rent", "amount": 1200}, {"category": "entertainment", "amount": 150}]'
+    expense_analysis = track_expenses(expenses)
+    
+    print("Risk Assessment:", risk_levels)
+    print("Investment Recommendations:", recommendations)
+    print("Expense Tracking:", expense_analysis)
+    print("AI Chat Response:", ai_chat("How should I diversify my portfolio?"))
